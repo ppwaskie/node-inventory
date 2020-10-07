@@ -9,6 +9,7 @@ from flask_restful import Api, Resource, reqparse
 from ipaddress import IPv4Address, IPv4Interface
 import ipaddress
 import json
+import etcd3
 
 app = Flask(__name__)
 api = Api(app)
@@ -22,57 +23,25 @@ def _custom_json_encoder(self, obj):
 
 json.JSONEncoder.default = _custom_json_encoder
 
-# TODO - pull this from etcd eventually
-nodes = [
-    {
-            "hostname": "host1",
-            "available": True,
-            "network": {
-                "ipaddr": IPv4Address("10.10.1.60"),
-                "gateway": IPv4Address("10.10.1.1"),
-                "netmask": "255.255.255.0",
-                "ethernet": {
-                    "mtu": 1500,
-                    "fc-mode": "none"
-                },
-            },
-            "led": {
-                "blinkstick": {
-                    "frontColor": 0xffff,
-                    "backColor": 0xffff,
-                    "blinkRate": 4
-                }
-            },
-    },
-    {
-            "hostname": "host2",
-            "available": True,
-            "network": {
-                "ipaddr": IPv4Address("10.10.1.61"),
-                "gateway": IPv4Address("10.10.1.1"),
-                "netmask": "255.255.255.0",
-                "ethernet": {
-                    "mtu": 1500,
-                    "fc-mode": "none"
-                },
-            },
-            "led": {
-                "blinkstick": {
-                    "frontColor": 0xffff,
-                    "backColor": 0xffff,
-                    "blinkRate": 4
-                }
-            },
-    }
-]
+# etcd cluster targets, TODO - move into config file?
+host = "10.10.1.2"
+port = 2379
 
 # Define the REST endpoints
 class Node(Resource):
     def get(self, name):
-        for node in nodes:
-            if (name == node["name"]):
-                return node, 200
-        return "Node not found", 404
+        # open the etcd target
+        client = etcd3.client(host=host, port=port)
+
+        for value, _metadata in client.get_prefix('/hosts'):
+            json_nodedata = json.loads(value.decode('utf-8'))
+
+            if (name == json_nodedata["hostname"]):
+                client.close()
+                return json_nodedata, 200
+
+        client.close()
+        return "Host " + name + " not found", 404
 
 #    def post(self, name):
 
@@ -82,10 +51,17 @@ class Node(Resource):
 
 class NodeList(Resource):
     def get(self):
-        foo = list()
-        for node in nodes:
-            foo.append(node)
-        return foo, 200
+        # open the etcd target
+        client = etcd3.client(host=host, port=port)
+
+        hostdata = list()
+
+        for value, _metadata in client.get_prefix('/hosts'):
+            hostdata.append(json.loads(value.decode('utf-8')))
+
+        client.close()
+
+        return hostdata, 200
 
 # Create the API resource and link it up
 api.add_resource(Node, "/node/<string:name>")
