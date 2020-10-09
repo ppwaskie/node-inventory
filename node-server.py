@@ -63,7 +63,7 @@ class NodeList(Resource):
 
         return hostdata, 200
 
-# TODO - Add an endpoint to return a node to an available state
+# TODO - Add an endpoint to return a node to an available state, put perhaps?
 
 # Get the next available node in the database.  If it's available, atomically retrieve it
 # and make it unavailable.
@@ -79,19 +79,43 @@ class GetNextAvailableNode(Resource):
         #
         # If the transaction does not succeed, continue parsing through the KV store.  This isn't
         # the most efficient mechanism ( O(n) ), but it's simple.
-        for value, _metadata in client.get_prefix('/hosts'):
-            hostdata = json.loads(value.decode('utf-8'))
-            client.transaction(
+        keys = set()
+        for value, metadata in client.get_all():
+            keys.add(metadata.key.decode('utf-8').split('/')[2])
+
+        for key in keys:
+            node_available_key = "/hosts/" + key + "/available"
+            node_data_key = "/hosts/" + key + "/hostdata"
+
+            value, _metadata = client.get(node_available_key)
+            node_availability = value.decode('utf-8')
+
+            value, _metadata = client.get(node_data_key)
+            json_nodedata = json.loads(value.decode('utf-8'))
+
+            status, resp = client.transaction(
                 compare=[
-                    hostdata["available"] == "true"
+                    client.transactions.value(node_available_key) == "true",
                 ],
                 success=[
-                    # change value to false for available on the key
-                ]
+                    client.transactions.put(node_available_key, "false"),
+                ],
+                failure=[],
             )
+
+            if (status):
+                break
+            else:
+                json_nodedata = None
+
+        if (json_nodedata is not None):
+            return json_nodedata, 200
+        else:
+            return "No available node found", 404
 
 # Create the API resource and link it up
 api.add_resource(Node, "/node/<string:name>")
 api.add_resource(NodeList, "/getNodes")
+api.add_resource(GetNextAvailableNode, "/getNextAvailableNode")
 
 app.run(debug=True)
