@@ -33,9 +33,14 @@ class Node(Resource):
         # open the etcd target
         client = etcd3.client(host=host, port=port)
 
-        for value, _metadata in client.get_prefix('/hosts'):
-            json_nodedata = json.loads(value.decode('utf-8'))
+        keys = set()
 
+        for value, metadata in client.get_all():
+            keys.add(metadata.key.decode('utf-8').split('/')[2])
+
+        for key in keys:
+            value, _metadata = client.get("/hosts/" + key + "/hostdata")
+            json_nodedata = json.loads(value.decode('utf-8'))
             if (name == json_nodedata["hostname"]):
                 client.close()
                 return json_nodedata, 200
@@ -55,8 +60,13 @@ class NodeList(Resource):
         client = etcd3.client(host=host, port=port)
 
         hostdata = list()
+        keys = set()
 
-        for value, _metadata in client.get_prefix('/hosts'):
+        for value, metadata in client.get_all():
+            keys.add(metadata.key.decode('utf-8').split('/')[2])
+
+        for key in keys:
+            value, _metadata = client.get("/hosts/" + key + "/hostdata")
             hostdata.append(json.loads(value.decode('utf-8')))
 
         client.close()
