@@ -27,6 +27,8 @@ json.JSONEncoder.default = _custom_json_encoder
 host = "10.10.1.2"
 port = 2379
 
+# TODO - should we add a global etcd client connection used by all endpoints?  Needs investigation.
+
 # Define the REST endpoints
 class Node(Resource):
     def get(self, name):
