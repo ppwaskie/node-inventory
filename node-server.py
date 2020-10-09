@@ -63,6 +63,33 @@ class NodeList(Resource):
 
         return hostdata, 200
 
+# TODO - Add an endpoint to return a node to an available state
+
+# Get the next available node in the database.  If it's available, atomically retrieve it
+# and make it unavailable.
+class GetNextAvailableNode(Resource):
+    # Is this a proper use of a GET operation, since we'll be modifying data?
+    def get(self):
+        # open the etcd target
+        client = etcd3.client(host=host, port=port)
+
+        # parse the KV store and find the first object that is available.  Use a transaction
+        # operation to find one, and then mark it unavailable in the KV store.  Return that
+        # node object if the transaction succeeds.
+        #
+        # If the transaction does not succeed, continue parsing through the KV store.  This isn't
+        # the most efficient mechanism ( O(n) ), but it's simple.
+        for value, _metadata in client.get_prefix('/hosts'):
+            hostdata = json.loads(value.decode('utf-8'))
+            client.transaction(
+                compare=[
+                    hostdata["available"] == "true"
+                ],
+                success=[
+                    # change value to false for available on the key
+                ]
+            )
+
 # Create the API resource and link it up
 api.add_resource(Node, "/node/<string:name>")
 api.add_resource(NodeList, "/getNodes")
